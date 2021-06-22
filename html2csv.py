@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from decimal import *
 from os.path import basename, realpath
+import decimal
 
 closure = 'Abschluss'
 kinds = {
@@ -38,7 +39,6 @@ def parse_date(date):
         return None
     else:
         (d, m, y) = dates[0]
-        # return y + "-" + m + "-" + d
         return "{}-{}-{}".format(y, m, d)
 
 
