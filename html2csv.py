@@ -9,27 +9,24 @@ from decimal import *
 from os.path import basename, realpath
 import decimal
 
-closure = 'Abschluss'
 kinds = {
     'Lastschrift': 'Lastschrift',
     'Gehalt/Rente': 'Gehalt/Rente',
     'Ueberweisung': 'Überweisung',
     'Dauerauftrag/Terminueberw.': 'Dauerauftrag / Terminueberweisung',
     'Gutschrift': 'Gutschrift',
-    'Abschluss': closure,
+    'Abschluss': 'Abschluss',
     'Abbuchung': 'Abbuchung',
     'Gutschrift/Dauerauftrag': 'Gutschrift / Dauerauftrag',
-    'Retoure': 'Retoure'
+    'Retoure': 'Retoure',
+    'Wertpapierkauf': 'Wertpapierkauf'
 }
+internal_transaction_kinds = {'Wertpapierkauf', 'Abschluss'}
 
 
-def is_closure(kind):
-    return kind == closure or (kind in kinds and kinds[kind] == closure)
-
-
-def is_closure_entry(e):
+def is_internal_transaction(e):
     if 'kind' in e:
-        return is_closure(e['kind'])
+        return e['kind'] in internal_transaction_kinds
     return False
 
 
@@ -84,7 +81,7 @@ def extract_initiation(raw, parsed):
 
 def extract_valuta(raw, parsed):
     index = 4
-    if is_closure_entry(parsed):
+    if is_internal_transaction(parsed):
         index = 3
     if len(raw) > index:
         date = parse_date(raw[index])
@@ -123,7 +120,7 @@ def extract_kind(raw, parsed):
 
 
 def extract_partner(raw, parsed):
-    if is_closure_entry(parsed):
+    if is_internal_transaction(parsed):
         parsed['partner'] = 'ING-DiBa'
     else:
         parsed['partner'] = raw[2]
@@ -131,7 +128,7 @@ def extract_partner(raw, parsed):
 
 def extract_amount(raw, parsed):
     index = 3
-    if is_closure_entry(parsed):
+    if is_internal_transaction(parsed):
         index = 2
     if len(raw) > index:
         parsed['amount'] = number_to_decimal(raw[index])
