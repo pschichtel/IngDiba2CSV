@@ -165,7 +165,7 @@ def resolve_and_validate_saldos(old_saldo, new_saldo, transactions):
             saldo += t['amount']
             t['new_saldo'] = saldo
     if saldo != new_saldo:
-        m = 'Expected new saldo is {}, calculated saldo is {}. It seems there not all entries where extracted'
+        m = 'Expected new saldo is {}, calculated saldo is {}. It seems that not all entries were extracted.'
         raise ValueError(m.format(new_saldo, saldo))
     return transactions
 
