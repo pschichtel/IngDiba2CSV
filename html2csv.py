@@ -19,9 +19,10 @@ kinds = {
     'Abbuchung': 'Abbuchung',
     'Gutschrift/Dauerauftrag': 'Gutschrift / Dauerauftrag',
     'Retoure': 'Retoure',
-    'Wertpapierkauf': 'Wertpapierkauf'
+    'Wertpapierkauf': 'Wertpapierkauf',
+    'Zins/Dividende WP': 'Zins/Dividende WP',
 }
-internal_transaction_kinds = {'Wertpapierkauf', 'Abschluss'}
+internal_transaction_kinds = {'Wertpapierkauf', 'Abschluss', 'Zins/Dividende WP'}
 
 
 def is_internal_transaction(e):
@@ -227,10 +228,11 @@ def convert_all_pdfs():
     html_paths = [convert_pdf(p, tmp_path) for p in pdf_paths]
     parsed_docs = [process_html(p) for p in html_paths]
 
-    shutil.rmtree(tmp_path)
-
+    print(f"Tmp dir: {tmp_path}")
     final_transactions = flatten([resolve_and_validate_saldos(old, new, doc) for old, new, doc in parsed_docs])
     emit_csv(final_transactions)
+
+    shutil.rmtree(tmp_path)
 
 
 convert_all_pdfs()
