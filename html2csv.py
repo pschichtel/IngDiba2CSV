@@ -228,7 +228,6 @@ def convert_all_pdfs():
     html_paths = [convert_pdf(p, tmp_path) for p in pdf_paths]
     parsed_docs = [process_html(p) for p in html_paths]
 
-    print(f"Tmp dir: {tmp_path}")
     final_transactions = flatten([resolve_and_validate_saldos(old, new, doc) for old, new, doc in parsed_docs])
     emit_csv(final_transactions)
 
