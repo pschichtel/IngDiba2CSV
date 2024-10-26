@@ -92,14 +92,14 @@ def extract_valuta(raw, parsed):
 
 def extract_application(raw, parsed):
     if len(raw) > 5:
-        parsed['application'] = raw[5]
+        parsed['application'] = html.unescape(raw[5])
 
 
 def extract_reference(raw, parsed):
     for p in raw:
         refs = re.findall('^Referenz:\\s*(.+)$', p)
         if len(refs) == 1:
-            parsed['reference'] = refs[0]
+            parsed['reference'] = html.unescape(refs[0])
             return
 
 
@@ -107,7 +107,7 @@ def extract_mandate(raw, parsed):
     for p in raw:
         refs = re.findall('^Mandat:\\s*(.+)$', p)
         if len(refs) == 1:
-            parsed['mandate'] = refs[0]
+            parsed['mandate'] = html.unescape(refs[0])
             return
 
 
