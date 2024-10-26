@@ -136,7 +136,7 @@ def extract_amount(raw: list[str], parsed: dict[str, any]) -> None:
         parsed['amount'] = number_to_decimal(raw[index])
 
 
-def extract_saldos(content: str) -> (Decimal, Decimal):
+def extract_saldos(content: str) -> tuple[Decimal, Decimal]:
     raw_saldos = re.findall('<b>(?:Neuer|Alter)\\s+Saldo</b><br/>[^<]*<b>(\\S+)\\s+Euro</b>', content)
     return number_to_decimal(raw_saldos[0]), number_to_decimal(raw_saldos[1])
 
@@ -172,7 +172,7 @@ def resolve_and_validate_saldos(old_saldo: Decimal, new_saldo: Decimal, transact
     return transactions
 
 
-def process_html(html_path: str) -> (Decimal, Decimal, list[dict[str, any]]):
+def process_html(html_path: str) -> tuple[Decimal, Decimal, list[dict[str, any]]]:
     with open(html_path, 'r') as content_file:
         content = content_file.read()
 
