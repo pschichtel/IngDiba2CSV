@@ -187,7 +187,6 @@ def resolve_and_validate_saldos(old_saldo: Decimal, new_saldo: Decimal, transact
 
 
 def process_html(html_path: str) -> tuple[Decimal, Decimal, list[dict[str, any]]]:
-    print(html_path, file=sys.stderr)
     with open(html_path, 'r') as content_file:
         content = content_file.read()
 
@@ -220,7 +219,6 @@ def convert_pdf(pdf_path: str, tmp_dir: str) -> str:
 
 def emit_csv(transactions: list[dict[str, any]]) -> None:
     for entry in transactions:
-        # print("###########")
         print('"{}","{}","{}","{}","{}",{},{},{},"{}","{}"'.format(entry.get('initiation', ''),
                                                                    entry.get('valuta', ''),
                                                                    entry.get('partner', ''),
