@@ -56,15 +56,15 @@ def chunk_entry(entry: str) -> list[str]:
     return [s for s in processed if len(s) > 0]
 
 
-def parse_entry(chunk: str, entry: list[str]) -> dict[str, any]:
+def parse_entry(chunk: str) -> dict[str, any]:
     parsed = dict()
 
     extract_kind(chunk, parsed)
     extract_initiation(chunk, parsed)
-    extract_valuta(entry, parsed)
+    extract_valuta(chunk, parsed)
     extract_partner(chunk, parsed)
     extract_amount(chunk, parsed)
-    extract_application(entry, parsed)
+    extract_application(chunk, parsed)
     extract_reference(chunk, parsed)
     extract_mandate(chunk, parsed)
     
@@ -86,19 +86,28 @@ def extract_initiation(chunk: str, parsed: dict[str, any]) -> None:
     parsed['initiation'] = date
 
 
-def extract_valuta(raw: list[str], parsed: dict[str, any]) -> None:
-    index = 4
-    if is_internal_transaction(parsed):
-        index = 3
-    if len(raw) > index:
-        date = parse_date(raw[index])
-        if date is not None:
-            parsed['valuta'] = date
+def extract_valuta(chunk: str, parsed: dict[str, any]) -> None:
+    lines = chunk.split('\n')
+    assert len(lines) > 3, "Entries are expected to have at least four lines"
+    match = re.search('([^<]+)<br/>', lines[3], re.IGNORECASE)
+    assert match is not None
+    date = parse_date(match.group(1))
+    assert date is not None
+    parsed['valuta'] = date
 
 
-def extract_application(raw: list[str], parsed: dict[str, any]) -> None:
-    if len(raw) > 5:
-        parsed['application'] = html.unescape(raw[5])
+def extract_application(chunk: str, parsed: dict[str, any]) -> None:
+    if parsed['kind'] == 'Abschluss':
+        return
+
+    lines = chunk.split('\n')
+    if len(lines) > 4:
+        line = lines[4]
+        line = re.sub('\r?\n', '', line)
+        line = re.sub('(?i)<br/>', '\n', line)
+        lines = [nbsp_to_sp(html.unescape(s)) for s in line.strip().split('\n') if not s.startswith('Mandat:') and not s.startswith('Referenz:')]
+        application = ' '.join(lines)
+        parsed['application'] = application
 
 
 def extract_reference(chunk: str, parsed: dict[str, any]) -> None:
@@ -136,8 +145,7 @@ def extract_partner(chunk: str, parsed: dict[str, any]) -> None:
 def extract_amount(chunk: str, parsed: dict[str, any]) -> None:
     lines = chunk.split('\n')
     assert len(lines) >= 3, "Entries are expected to have at least three lines"
-    index = 2
-    parsed['amount'] = number_to_decimal(lines[index])
+    parsed['amount'] = number_to_decimal(lines[2])
 
 
 def extract_saldos(content: str) -> tuple[Decimal, Decimal]:
@@ -155,11 +163,13 @@ def number_to_decimal(number) -> Decimal:
 
 
 def dejunk(content: str) -> str:
-    no_footers = re.sub('<hr/>\\s*<a[^>]+>[\\s\\S]+?(<img[^>]+><br/>\\s*)+.+?<br/>\\s*', '', content)
-    no_trailer = re.sub('<b>Abschlussbetrag[\\S\\s]+', '', no_footers)
-    no_random_code = re.sub('^.+?_T<br/>\\s*', '', no_trailer, flags=re.MULTILINE)
+    #content = re.sub('<hr/>\\s*<a[^>]+>[\\s\\S]+?(<img[^>]+><br/>\\s*)+.+?<br/>\\s*', '', content)
+    content = re.sub('<hr/>\\s*', '', content)
+    content = re.sub('<img[^>]+><br/>\\s*', '', content)
+    content = re.sub('<b>Abschlussbetrag[\\S\\s]+', '', content)
+    content = re.sub('^.+?_T<br/>\\s*', '', content, flags=re.MULTILINE)
     
-    return no_random_code
+    return content
 
 
 def resolve_and_validate_saldos(old_saldo: Decimal, new_saldo: Decimal, transactions: list[dict[str, any]]) -> list[dict[str, any]]:
@@ -177,6 +187,7 @@ def resolve_and_validate_saldos(old_saldo: Decimal, new_saldo: Decimal, transact
 
 
 def process_html(html_path: str) -> tuple[Decimal, Decimal, list[dict[str, any]]]:
+    print(html_path, file=sys.stderr)
     with open(html_path, 'r') as content_file:
         content = content_file.read()
 
@@ -184,16 +195,16 @@ def process_html(html_path: str) -> tuple[Decimal, Decimal, list[dict[str, any]]
 
     old_saldo, new_saldo = extract_saldos(content)
 
-    # r = r'<b>(?:[\\s\\S](?!<b>))+'
-    # r = r'\d\d.\d\d.\d\d\d\d<br/>\n<b>[^\n]+\n[^\n]+\n[^\n]+\n[^\n]+\n'
-    # r = r'\d\d\.\d\d\.\d\d\d\d<br/>\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+\n'
-    r = r'\d\d\.\d\d\.\d\d\d\d[^\n]*\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+(?:\n(?!\d\d\.\d\d\.\d\d\d\d)[^\n]+)?'
-    table_entries: list[str] = re.findall(r, dejunked)
-    chunked_entries = [(e, chunk_entry(e)) for e in table_entries]
-    plausible_entries = [(s, e) for s, e in chunked_entries if len(e) > 2]
-    parsed_entries = [parse_entry(s, e) for s, e in plausible_entries]
-    transactions = [e for e in parsed_entries if 'kind' in e and 'amount' in e and 'initiation' in e]
-    return old_saldo, new_saldo, transactions
+    pages = re.split('<a name=\\d+></a>', dejunked)
+    all_transactions = []
+    for page in pages:
+        r = r'\d\d\.\d\d\.\d\d\d\d[^\n]*\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+(?:\n(?!\d\d\.\d\d\.\d\d\d\d)[^\n]+)?'
+        table_entries: list[str] = re.findall(r, page)
+        chunks = [chunk for chunk in table_entries]
+        parsed_entries = [parse_entry(c) for c in chunks]
+        transactions = [e for e in parsed_entries if 'kind' in e and 'amount' in e and 'initiation' in e]
+        all_transactions.extend(transactions)
+    return old_saldo, new_saldo, all_transactions
 
 
 def convert_pdf(pdf_path: str, tmp_dir: str) -> str:
