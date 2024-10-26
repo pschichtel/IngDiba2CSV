@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os
-import shutil
+import html
 import sys
 import re
 import subprocess
@@ -124,7 +124,7 @@ def extract_partner(raw, parsed):
     if is_internal_transaction(parsed):
         parsed['partner'] = 'ING-DiBa'
     else:
-        parsed['partner'] = raw[2]
+        parsed['partner'] = html.unescape(raw[2])
 
 
 def extract_amount(raw, parsed):
