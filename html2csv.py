@@ -63,7 +63,7 @@ def parse_entry(chunk: str, entry: list[str]) -> dict[str, any]:
     extract_initiation(chunk, parsed)
     extract_valuta(entry, parsed)
     extract_partner(chunk, parsed)
-    extract_amount(entry, parsed)
+    extract_amount(chunk, parsed)
     extract_application(entry, parsed)
     extract_reference(chunk, parsed)
     extract_mandate(chunk, parsed)
@@ -133,12 +133,11 @@ def extract_partner(chunk: str, parsed: dict[str, any]) -> None:
         parsed['partner'] = html.unescape(match.group(1)).strip()
 
 
-def extract_amount(raw: list[str], parsed: dict[str, any]) -> None:
-    index = 3
-    if is_internal_transaction(parsed):
-        index = 2
-    if len(raw) > index:
-        parsed['amount'] = number_to_decimal(raw[index])
+def extract_amount(chunk: str, parsed: dict[str, any]) -> None:
+    lines = chunk.split('\n')
+    assert len(lines) >= 3, "Entries are expected to have at least three lines"
+    index = 2
+    parsed['amount'] = number_to_decimal(lines[index])
 
 
 def extract_saldos(content: str) -> tuple[Decimal, Decimal]:
