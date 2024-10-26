@@ -5,6 +5,7 @@ import sys
 import re
 import subprocess
 import tempfile
+import typing
 from decimal import *
 from os.path import basename, realpath
 import decimal
@@ -25,13 +26,13 @@ kinds = {
 internal_transaction_kinds = {'Wertpapierkauf', 'Abschluss', 'Zins/Dividende WP'}
 
 
-def is_internal_transaction(e):
+def is_internal_transaction(e: dict[str, any]) -> bool:
     if 'kind' in e:
         return e['kind'] in internal_transaction_kinds
     return False
 
 
-def parse_date(date):
+def parse_date(date) -> str | None:
     dates = re.findall('^(\\d\\d)\\.(\\d\\d)\\.(\\d\\d\\d\\d)$', date)
     if len(dates) != 1:
         return None
@@ -40,18 +41,18 @@ def parse_date(date):
         return "{}-{}-{}".format(y, m, d)
 
 
-def preprocess_part(part):
+def preprocess_part(part: str) -> str:
     nbsp_stripped = part.replace('&#160;', ' ')
     html_stripped = re.sub('<[^>]+>', '', nbsp_stripped)
     return html_stripped.strip()
 
 
-def chunk_entry(entry):
+def chunk_entry(entry: str) -> list[str]:
     processed = [preprocess_part(s) for part in entry.split('</b>') for s in part.split("<br/>")]
     return [s for s in processed if len(s) > 0]
 
 
-def parse_entry(entry):
+def parse_entry(entry: list[str]) -> dict[str, any]:
     parsed = dict()
 
     extract_kind(entry, parsed)
@@ -73,14 +74,14 @@ def parse_entry(entry):
     return parsed
 
 
-def extract_initiation(raw, parsed):
+def extract_initiation(raw: list[str], parsed: dict[str, any]) -> None:
     if len(raw) > 0:
         date = parse_date(raw[0])
         if date is not None:
             parsed['initiation'] = date
 
 
-def extract_valuta(raw, parsed):
+def extract_valuta(raw: list[str], parsed: dict[str, any]) -> None:
     index = 4
     if is_internal_transaction(parsed):
         index = 3
@@ -90,12 +91,12 @@ def extract_valuta(raw, parsed):
             parsed['valuta'] = date
 
 
-def extract_application(raw, parsed):
+def extract_application(raw: list[str], parsed: dict[str, any]) -> None:
     if len(raw) > 5:
         parsed['application'] = html.unescape(raw[5])
 
 
-def extract_reference(raw, parsed):
+def extract_reference(raw: list[str], parsed: dict[str, any]) -> None:
     for p in raw:
         refs = re.findall('^Referenz:\\s*(.+)$', p)
         if len(refs) == 1:
@@ -103,7 +104,7 @@ def extract_reference(raw, parsed):
             return
 
 
-def extract_mandate(raw, parsed):
+def extract_mandate(raw: list[str], parsed: dict[str, any]) -> None:
     for p in raw:
         refs = re.findall('^Mandat:\\s*(.+)$', p)
         if len(refs) == 1:
@@ -111,7 +112,7 @@ def extract_mandate(raw, parsed):
             return
 
 
-def extract_kind(raw, parsed):
+def extract_kind(raw: list[str], parsed: dict[str, any]) -> None:
     if len(raw) > 1:
         kind = raw[1]
         if kind in kinds:
@@ -120,14 +121,14 @@ def extract_kind(raw, parsed):
             parsed['kind'] = kind
 
 
-def extract_partner(raw, parsed):
+def extract_partner(raw: list[str], parsed: dict[str, any]) -> None:
     if is_internal_transaction(parsed):
         parsed['partner'] = 'ING-DiBa'
     else:
         parsed['partner'] = html.unescape(raw[2])
 
 
-def extract_amount(raw, parsed):
+def extract_amount(raw: list[str], parsed: dict[str, any]) -> None:
     index = 3
     if is_internal_transaction(parsed):
         index = 2
@@ -135,12 +136,12 @@ def extract_amount(raw, parsed):
         parsed['amount'] = number_to_decimal(raw[index])
 
 
-def extract_saldos(content):
+def extract_saldos(content: str) -> (Decimal, Decimal):
     raw_saldos = re.findall('<b>(?:Neuer|Alter)\\s+Saldo</b><br/>[^<]*<b>(\\S+)\\s+Euro</b>', content)
     return number_to_decimal(raw_saldos[0]), number_to_decimal(raw_saldos[1])
 
 
-def number_to_decimal(number):
+def number_to_decimal(number) -> Decimal:
     format_normalized = number.replace('.', '').replace(',', '.')
     stripped = re.sub('(\\.\\d\\d).*', '\\1', format_normalized)
     try:
@@ -149,7 +150,7 @@ def number_to_decimal(number):
         return Decimal(0)
 
 
-def dejunk(content):
+def dejunk(content: str) -> str:
     no_footers = re.sub('<hr/>\\s*<a[^>]+>[\\s\\S]+?(<img[^>]+><br/>\\s*)+.+?<br/>\\s*', '', content)
     no_trailer = re.sub('<b>Abschlussbetrag[\\S\\s]+', '', no_footers)
     no_random_code = re.sub('^.+?_T<br/>\\s*', '', no_trailer, flags=re.MULTILINE)
@@ -157,7 +158,7 @@ def dejunk(content):
     return no_random_code
 
 
-def resolve_and_validate_saldos(old_saldo, new_saldo, transactions):
+def resolve_and_validate_saldos(old_saldo: Decimal, new_saldo: Decimal, transactions: list[dict[str, any]]) -> list[dict[str, any]]:
     saldo = old_saldo
     for i in range(0, len(transactions)):
         t = transactions[i]
@@ -171,7 +172,7 @@ def resolve_and_validate_saldos(old_saldo, new_saldo, transactions):
     return transactions
 
 
-def process_html(html_path):
+def process_html(html_path: str) -> (Decimal, Decimal, list[dict[str, any]]):
     with open(html_path, 'r') as content_file:
         content = content_file.read()
 
@@ -183,7 +184,7 @@ def process_html(html_path):
     # r = r'\d\d.\d\d.\d\d\d\d<br/>\n<b>[^\n]+\n[^\n]+\n[^\n]+\n[^\n]+\n'
     # r = r'\d\d\.\d\d\.\d\d\d\d<br/>\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+\n'
     r = r'\d\d\.\d\d\.\d\d\d\d[^\n]*\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+(?:\n(?!\d\d\.\d\d\.\d\d\d\d)[^\n]+)?'
-    table_entries = re.findall(r, dejunked)
+    table_entries: list[str] = re.findall(r, dejunked)
     chunked_entries = [chunk_entry(e) for e in table_entries]
     plausible_entries = [e for e in chunked_entries if len(e) > 2]
     parsed_entries = [parse_entry(e) for e in plausible_entries]
@@ -191,7 +192,7 @@ def process_html(html_path):
     return old_saldo, new_saldo, transactions
 
 
-def convert_pdf(pdf_path, tmp_dir):
+def convert_pdf(pdf_path: str, tmp_dir: str) -> str:
     pdf_filename = basename(pdf_path)
     no_ext = os.path.splitext(pdf_filename)[0]
     output_path = os.path.join(tmp_dir, no_ext + ".html")
@@ -202,7 +203,7 @@ def convert_pdf(pdf_path, tmp_dir):
     return html_path
 
 
-def emit_csv(transactions):
+def emit_csv(transactions: list[dict[str, any]]) -> None:
     for entry in transactions:
         # print("###########")
         print('"{}","{}","{}","{}","{}",{},{},{},"{}","{}"'.format(entry.get('initiation', ''),
@@ -216,12 +217,12 @@ def emit_csv(transactions):
                                                                    entry.get('reference', ''),
                                                                    entry.get('mandate', '')))
 
-
-def flatten(l):
+T = typing.TypeVar('T')
+def flatten(l: list[list[T]]) -> list[T]:
     return [item for sublist in l for item in sublist]
 
 
-def convert_all_pdfs():
+def convert_all_pdfs() -> None:
     tmp_path = tempfile.mkdtemp(prefix="pdftohtml_")
 
     pdf_paths = [realpath(sys.argv[i]) for i in range(1, len(sys.argv))]
