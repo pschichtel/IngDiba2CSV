@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import html
+import shutil
 import sys
 import re
 import subprocess
@@ -24,7 +25,10 @@ kinds = {
     'Zins/Dividende WP': 'Zins/Dividende WP',
 }
 internal_transaction_kinds = {'Wertpapierkauf', 'Abschluss', 'Zins/Dividende WP'}
+nbsp = html.unescape('&#160;')
 
+def nbsp_to_sp(s: str) -> str:
+    return re.sub(nbsp, ' ', s)
 
 def is_internal_transaction(e: dict[str, any]) -> bool:
     if 'kind' in e:
@@ -52,17 +56,17 @@ def chunk_entry(entry: str) -> list[str]:
     return [s for s in processed if len(s) > 0]
 
 
-def parse_entry(entry: list[str]) -> dict[str, any]:
+def parse_entry(chunk: str, entry: list[str]) -> dict[str, any]:
     parsed = dict()
 
-    extract_kind(entry, parsed)
-    extract_initiation(entry, parsed)
+    extract_kind(chunk, parsed)
+    extract_initiation(chunk, parsed)
     extract_valuta(entry, parsed)
-    extract_partner(entry, parsed)
+    extract_partner(chunk, parsed)
     extract_amount(entry, parsed)
     extract_application(entry, parsed)
-    extract_reference(entry, parsed)
-    extract_mandate(entry, parsed)
+    extract_reference(chunk, parsed)
+    extract_mandate(chunk, parsed)
     
     if 'valuta' in parsed and 'initiation' not in parsed:
         parsed['initiation'] = parsed['valuta']
@@ -74,11 +78,12 @@ def parse_entry(entry: list[str]) -> dict[str, any]:
     return parsed
 
 
-def extract_initiation(raw: list[str], parsed: dict[str, any]) -> None:
-    if len(raw) > 0:
-        date = parse_date(raw[0])
-        if date is not None:
-            parsed['initiation'] = date
+def extract_initiation(chunk: str, parsed: dict[str, any]) -> None:
+    match = re.search('<br/>', chunk, re.IGNORECASE)
+    assert match is not None
+    date = parse_date(chunk[0:match.span()[0]])
+    assert date is not None
+    parsed['initiation'] = date
 
 
 def extract_valuta(raw: list[str], parsed: dict[str, any]) -> None:
@@ -96,36 +101,36 @@ def extract_application(raw: list[str], parsed: dict[str, any]) -> None:
         parsed['application'] = html.unescape(raw[5])
 
 
-def extract_reference(raw: list[str], parsed: dict[str, any]) -> None:
-    for p in raw:
-        refs = re.findall('^Referenz:\\s*(.+)$', p)
-        if len(refs) == 1:
-            parsed['reference'] = html.unescape(refs[0])
-            return
+def extract_reference(chunk: str, parsed: dict[str, any]) -> None:
+    match = re.search('<br/>\n?Referenz:&#160;([^<\\s]+)<br/>$', chunk, re.IGNORECASE)
+    if match is not None:
+        parsed['reference'] = nbsp_to_sp(html.unescape(match.group(1)).strip())
 
 
-def extract_mandate(raw: list[str], parsed: dict[str, any]) -> None:
-    for p in raw:
-        refs = re.findall('^Mandat:\\s*(.+)$', p)
-        if len(refs) == 1:
-            parsed['mandate'] = html.unescape(refs[0])
-            return
+def extract_mandate(chunk: str, parsed: dict[str, any]) -> None:
+    match = re.search('<br/>\n?Mandat:&#160;([^<\\s]+)<br/>', chunk, re.IGNORECASE)
+    if match is not None:
+        parsed['mandate'] = nbsp_to_sp(html.unescape(match.group(1)).strip())
 
 
-def extract_kind(raw: list[str], parsed: dict[str, any]) -> None:
-    if len(raw) > 1:
-        kind = raw[1]
-        if kind in kinds:
-            parsed['kind'] = kinds[kind]
-        else:
-            parsed['kind'] = kind
+def extract_kind(chunk: str, parsed: dict[str, any]) -> None:
+    match = re.search('<b>([^<]+)</b>', chunk, re.IGNORECASE)
+    assert match is not None, "Entries are expected to have a kind enclosed in <b>"
+
+    kind = html.unescape(match.group(1)).strip()
+    if kind in kinds:
+        parsed['kind'] = kinds[kind]
+    else:
+        parsed['kind'] = kind
 
 
-def extract_partner(raw: list[str], parsed: dict[str, any]) -> None:
+def extract_partner(chunk: str, parsed: dict[str, any]) -> None:
     if is_internal_transaction(parsed):
         parsed['partner'] = 'ING-DiBa'
     else:
-        parsed['partner'] = html.unescape(raw[2])
+        match = re.search('</b>([^<]+)<br/>', chunk, re.IGNORECASE)
+        assert match is not None, "Entries are expected to have the transaction partner right after the kind!"
+        parsed['partner'] = html.unescape(match.group(1)).strip()
 
 
 def extract_amount(raw: list[str], parsed: dict[str, any]) -> None:
@@ -185,9 +190,9 @@ def process_html(html_path: str) -> tuple[Decimal, Decimal, list[dict[str, any]]
     # r = r'\d\d\.\d\d\.\d\d\d\d<br/>\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+\n'
     r = r'\d\d\.\d\d\.\d\d\d\d[^\n]*\n<b>[^\n]+\n[^\n]+\n\d\d.\d\d.\d\d\d\d[^\n]+(?:\n(?!\d\d\.\d\d\.\d\d\d\d)[^\n]+)?'
     table_entries: list[str] = re.findall(r, dejunked)
-    chunked_entries = [chunk_entry(e) for e in table_entries]
-    plausible_entries = [e for e in chunked_entries if len(e) > 2]
-    parsed_entries = [parse_entry(e) for e in plausible_entries]
+    chunked_entries = [(e, chunk_entry(e)) for e in table_entries]
+    plausible_entries = [(s, e) for s, e in chunked_entries if len(e) > 2]
+    parsed_entries = [parse_entry(s, e) for s, e in plausible_entries]
     transactions = [e for e in parsed_entries if 'kind' in e and 'amount' in e and 'initiation' in e]
     return old_saldo, new_saldo, transactions
 
